@@ -1,0 +1,25 @@
+https://github.com/jprichardson/node-fs-extra/tree/6bffcd81881ae474d3d1765be7dd389b5edfd0e0
+https://github.com/jprichardson/node-jsonfile/tree/9c6478a85899a9318547a6e9514b0403166d8c5c
+https://github.com/fshost/node-dir/tree/a57c3b1b571dd91f464ae398090ba40f64ba38a2
+https://github.com/petkaantonov/bluebird/tree/6c8c069c34829557abfaca66d7f22383b389a4b5
+https://github.com/kriskowal/q/tree/6bc7f524eb104aca8bffde95f180b5210eb8dd4b
+https://github.com/isaacs/node-graceful-fs/tree/c1b377782112ae0f25b2abe561fbbea6cfb6f876
+https://github.com/tildeio/rsvp.js/tree/21e0c9720e08ffa53d597c54fed17119899a9a83
+https://github.com/isaacs/node-glob/tree/8315c2d576f9f3092cdc2f2cc41a398bc656035a
+https://github.com/maugenst/zip-a-folder/tree/5089113647753d5086ea20f052f9d29840866ee1
+https://github.com/streamich/memfs/tree/ec83e6fe1f57432eac2ab61c5367ba9ec3a775a1 # slow; dependencies: typescript@4.9.5
+https://github.com/chakrit/node-uneval/tree/7578dc67090f650a171610a08ea529eba9d27438
+https://github.com/felixge/node-dirty/tree/d7fb4d4ecf0cce144efa21b674965631a7955e61
+https://github.com/pull-stream/pull-stream/tree/29b4868bb3864c427c3988855c5d65ad5cb2cb1c
+https://github.com/simple-statistics/simple-statistics/tree/31f037dd5550d554c4a96c3ee35b12e10a1c9cb7
+https://github.com/swang/plural/tree/f0027d66ecb37ce0108c8bcb4a6a448d1bf64047
+https://github.com/js-sdsl/js-sdsl/tree/055866ad5515037c724a529fecb2d3c2b35b2075
+https://github.com/infusion/Complex.js/tree/d995ca105e8adef4c38d0ace50643daf84e0dd1c
+https://github.com/quilljs/delta/tree/5ffb853d645aa5b4c93e42aa52697e2824afc869
+https://github.com/manuelmhtr/countries-and-timezones/tree/e34cb4b6832795cbac8d44f6f9c97eb1038b831b
+https://github.com/rainder/node-geo-point/tree/c839d477ff7a48d1fc6574495cbbc6196161f494
+https://gitlab.com/nerd-vision/opensource/gitlab-js/tree/c2c9ef54b1ea0fc82b284bc72dc2ff0935983f4c
+https://gitlab.com/comfort-stereo/omnitool/tree/0edf7d148337051c7c2307738423f0ff3db494c7 # slow
+https://gitlab.com/demsking/image-downloader/tree/19a53f652824bd0c612cc5bcd3a2eb173a16f938
+https://gitlab.com/autokent/crawler-url-parser/tree/202c5b25ad693d284804261e2b3815fe66e0723e
+https://gitlab.com/cptpackrat/spacl-core/tree/fcb8511a0d01bdc206582cfacb3e2b01a0288f6a

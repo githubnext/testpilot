@@ -1,0 +1,63 @@
+name: Release a new version of TestPilot
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: >
+          Create a pre-release instead of a full release.
+        type: boolean
+        default: true
+      name:
+        description: >
+          Name of the release to create. If not specified, the name of the
+          release will be the version number specified in the package.json file,
+          plus the HEAD commit SHA for pre-releases.
+        default: ""
+      description:
+        description: >
+          Description of this release.
+        default: ""
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+
+      - name: Build
+        run: npm pack
+
+      - name: Determine release name
+        run: |
+          if ! [ -z "${{ github.event.inputs.name }}" ]; then
+            release_name="${{ github.event.inputs.name }}"
+          else
+            release_name="v$(jq -r '.version' package.json)"
+            # if this is a pre-release, append the commit SHA
+            if [ "${{ github.event.inputs.prerelease }}" = "true" ]; then
+              release_name="${release_name}-$(git rev-parse --short HEAD)"
+            fi
+          fi
+          # check if a tag with this name already exists
+          if git rev-parse -q --verify "refs/tags/${release_name}"; then
+            echo "Tag ${release_name} already exists. Aborting."
+            exit 1
+          fi
+          echo "Release name: ${release_name}"
+          echo "release_name=${release_name}" >> $GITHUB_ENV
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "${{ env.release_name }}"
+          body: "${{ github.event.inputs.description }}"
+          tag_name: "${{ env.release_name }}"
+          prerelease: "${{ github.event.inputs.prerelease }}"
+          fail_on_unmatched_files: true
+          files: |
+            *.tgz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

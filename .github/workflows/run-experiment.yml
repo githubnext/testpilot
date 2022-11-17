@@ -1,0 +1,297 @@
+name: Run TestPilot experiment
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Packages to generate tests for"
+        default: "+benchmarks.txt"
+      snippetsFrom:
+        description: "Code snippets source"
+        default: "doc"
+      numSnippets:
+        description: 'Maximum number of snippets to include in each prompt, or "all"'
+        default: "all"
+      snippetLength:
+        description: "Maximum length of each snippet in lines"
+        default: "20"
+      temperatures:
+        description: "Sampling temperatures to try when obtaining completions (whitespace-separated)"
+        default: "0.0"
+      numCompletions:
+        description: "Number of completions to generate for each prompt"
+        default: "5"
+      model:
+        description: "Which LLM API to use"
+        type: "choice"
+        options:
+          - "gpt"
+          - "starcoder"
+        default: "gpt"
+      compareTo:
+        description: "Run number of previous run to compare to (leave empty to skip comparison)"
+        default: ""
+      skipSlowBenchmarks:
+        description: "Skip slow benchmarks"
+        type: boolean
+        default: false
+      debug_enabled:
+        type: boolean
+        description: "Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)"
+        default: false
+  # Run every weekday at 2:00 AM UTC
+  # schedule:
+  #   - cron: '0 2 * * 1-5'
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: "${{ steps.parse_packages.outputs.packages }}"
+      snippetsFrom: "${{ github.event.inputs.snippetsFrom || 'doc' }}"
+      snippetLength: "${{ github.event.inputs.snippetLength || '20' }}"
+      temperatures: "${{ github.event.inputs.temperatures || '0.0' }}"
+      numSnippets: "${{ github.event.inputs.numSnippets || 'all' }}"
+      numCompletions: "${{ github.event.inputs.numCompletions || '5' }}"
+      model: "${{ github.event.inputs.model || 'gpt' }}"
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 12
+
+      - id: parse_packages
+        run: |
+          packages=$(node ${GITHUB_WORKSPACE}/.github/parse_packages.js \
+            ${{ github.event.inputs.skipSlowBenchmarks == 'true' && '--skip-slow-benchmarks' || '' }} \
+            "${{ github.event.inputs.packages || '+benchmarks.txt' }}")
+          echo "packages=$packages" >> $GITHUB_OUTPUT
+
+  benchmark:
+    needs:
+      - setup
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJson(needs.setup.outputs.packages) }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: testpilot
+
+      - name: Check out CodeQL repo
+        uses: actions/checkout@v3
+        with:
+          repository: github/codeql
+          ref: codeql-cli/v2.10.0
+          path: codeql-repo
+
+      - name: Install CodeQL 2.10.0
+        run: |
+          wget -q https://github.com/github/codeql-cli-binaries/releases/download/v2.10.0/codeql-linux64.zip
+          unzip codeql-linux64.zip
+          echo "$GITHUB_WORKSPACE/codeql" >> $GITHUB_PATH
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 12
+
+      - name: Set up TestPilot
+        run: |
+          cd testpilot
+          npm run build
+
+      - name: Checkout github package repo
+        if: ${{ matrix.package.host == 'github.com' }}
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ format('{0}/{1}', matrix.package.owner, matrix.package.repo) }}
+          ref: ${{ matrix.package.sha }}
+          path: "source"
+      
+      - name: Checkout gitlab package repo
+        if: ${{ matrix.package.host == 'gitlab.com' }}
+        run: |
+          git clone ${{ format('https://gitlab.com/{0}/{1}', matrix.package.owner, matrix.package.repo) }} source
+          cd source
+          git checkout ${{ matrix.package.sha }}
+
+      - name: Determine package name
+        id: pkg-name
+        run: |
+          # name of the package
+          TESTPILOT_PACKAGE_NAME=$(cat source/${{ matrix.package.path }}/package.json | jq -r .name )
+
+          # some packages have a / in their names (looking at you, gitlab-js!)
+          if [[ "$TESTPILOT_PACKAGE_NAME" == *"/"* ]]; then
+            TESTPILOT_PACKAGE_NAME=${TESTPILOT_PACKAGE_NAME##*/}
+          fi
+
+          # path to the package within the repo checkout
+          TESTPILOT_PACKAGE_PATH="$GITHUB_WORKSPACE/$TESTPILOT_PACKAGE_NAME/${{ matrix.package.path }}"
+          # make sure there isn't already a directory with the same name
+          if [ -d "$TESTPILOT_PACKAGE_PATH" ]; then
+            echo "ERROR: $TESTPILOT_PACKAGE_PATH already exists"
+            exit 1
+          fi
+          # rename checkout, since some packages examine its name (looking at you, bluebird!)
+          mv source $TESTPILOT_PACKAGE_NAME
+          echo "Package name: $TESTPILOT_PACKAGE_NAME, path: $TESTPILOT_PACKAGE_PATH"
+          # export environment variables
+          echo "TESTPILOT_PACKAGE_NAME=$TESTPILOT_PACKAGE_NAME" >> $GITHUB_ENV
+          echo "TESTPILOT_PACKAGE_PATH=$TESTPILOT_PACKAGE_PATH" >> $GITHUB_ENV
+          echo "pkgName=$TESTPILOT_PACKAGE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Install package, its dependencies, and test packages
+        run: |
+          cd $TESTPILOT_PACKAGE_PATH
+          npm i || npm i --legacy-peer-deps
+          # if matrix.package.dependencies is not empty, install them
+          if ! [ -z "${{ matrix.package.dependencies }}" ]; then
+            npm i ${{ matrix.package.dependencies }}
+          fi
+          npm run build || npm run prepack || echo 'Error with npm run build and npm run prepack'
+          npm i --no-save mocha
+
+      - name: Create CodeQL database
+        if: ${{ needs.setup.outputs.snippetsFrom == 'code' || needs.setup.outputs.snippetsFrom == 'both' }}
+        run: |
+          codeql database create --language=javascript "--source-root=$TESTPILOT_PACKAGE_PATH" -- ./db
+
+      - name: Generate tests
+        env:
+          TESTPILOT_LLM_API_ENDPOINT: "https://model-6.openai.azure.com/openai/deployments/turbo/completions?api-version=2022-12-01"
+          TESTPILOT_LLM_AUTH_HEADERS: '{ "api-key": "${{ secrets.GPT35_API_KEY }}" }'
+          STARCODER_API_ENDPOINT: '${{ secrets.STARCODER_API_ENDPOINT3 }}'
+        run: |
+          cd testpilot
+          outputdir="results/$TESTPILOT_PACKAGE_NAME"
+          mkdir -p $outputdir 
+          echo "Computing package statistics"
+          node benchmark/package_stats.js "$TESTPILOT_PACKAGE_PATH" > stats.json
+          echo "Generating tests for $TESTPILOT_PACKAGE_NAME"
+          node --max-old-space-size=6144 benchmark/run.js \
+            --outputDir $outputdir \
+            --database ../db \
+            --package "$TESTPILOT_PACKAGE_PATH" \
+            --snippets ${{ needs.setup.outputs.snippetsFrom }} \
+            --numSnippets ${{ needs.setup.outputs.numSnippets }} \
+            --snippetLength ${{ needs.setup.outputs.snippetLength }} \
+            --temperatures "${{ needs.setup.outputs.temperatures }}" \
+            --numCompletions ${{ needs.setup.outputs.numCompletions }} \
+            --model ${{ needs.setup.outputs.model }}
+          mv stats.json $outputdir
+
+      - name: Calculate edit distance of generated tests
+        run: |
+          cd testpilot
+          outputdir="results/$TESTPILOT_PACKAGE_NAME"
+          node benchmark/editDistance.js --generatedTestsDir  $outputdir --existingTestsDir $TESTPILOT_PACKAGE_PATH --pkgName $TESTPILOT_PACKAGE_NAME
+          mv similarityReport.json $outputdir
+
+      - name: Add non-trivial coverage data
+        run: |
+          cd testpilot
+          ./.github/non_trivial_coverage.sh "results/$TESTPILOT_PACKAGE_NAME"
+
+      - name: Zip up results
+        run: |
+          cd testpilot
+          zip -r results.zip results
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-${{ steps.pkg-name.outputs.pkgName }}
+          path: "testpilot/results.zip"
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+
+  combine_output:
+    name: Combine output from all benchmarks
+    needs:
+      - setup
+      - benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download output zips
+        uses: actions/download-artifact@v2
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+
+      - name: Combine output zips
+        run: |
+          mkdir results
+          for zip in results-*/results.zip
+          do
+            unzip -oq $zip
+          done
+          zip -r results.zip results
+      - name: Upload combined output files
+        uses: actions/upload-artifact@v2
+        with:
+          name: results-all
+          path: results.zip
+
+  generate-report:
+    needs:
+      - setup
+      - benchmark
+      - combine_output
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 12
+
+      - name: Set up TestPilot
+        run: |
+          npm run build
+
+      - name: Download artifacts for this run
+        uses: actions/download-artifact@v3
+        with:
+          name: results-all
+          path: results
+
+      - name: Download artifacts for comparison run
+        if: ${{ github.event.inputs.compareTo != '' }}
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          run_number: ${{ github.event.inputs.compareTo }}
+          name: results-all
+          path: baseline
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+
+      - name: Generate report
+        run: |
+          cd results
+          unzip results.zip
+          cd ..
+
+          echo '${{ toJson(needs.setup.outputs) }}' > config.json
+          if [ -d baseline ]; then
+            cd baseline
+            unzip results.zip
+            cd .. 
+            baseline_artifact=baseline/results
+          else
+            baseline_artifact=''
+          fi
+          node ${GITHUB_WORKSPACE}/benchmark/generate_report.js config.json results/results $baseline_artifact > $GITHUB_STEP_SUMMARY

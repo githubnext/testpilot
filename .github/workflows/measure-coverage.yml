@@ -1,0 +1,106 @@
+name: Measure coverage of default test suite
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Packages to generate tests for"
+        default: "+benchmarks.txt"
+      debug_enabled:
+        type: boolean
+        description: "Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)"
+        default: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: "${{ steps.parse_packages.outputs.packages }}"
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 12
+
+      - id: parse_packages
+        run: |
+          packages=$(node ${GITHUB_WORKSPACE}/.github/parse_packages.js \
+            "${{ github.event.inputs.packages || '+benchmarks.txt' }}")
+          echo "packages=$packages" >> $GITHUB_OUTPUT
+
+  benchmark:
+    needs:
+      - setup
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJson(needs.setup.outputs.packages) }}
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 12
+
+      - name: Checkout github package repo
+        if: ${{ matrix.package.host == 'github.com' }}
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ format('{0}/{1}', matrix.package.owner, matrix.package.repo) }}
+          ref: ${{ matrix.package.sha }}
+          path: "source"
+      
+      - name: Checkout gitlab package repo
+        if: ${{ matrix.package.host == 'gitlab.com' }}
+        run: |
+          git clone ${{ format('https://gitlab.com/{0}/{1}', matrix.package.owner, matrix.package.repo) }} source
+          cd source
+          git checkout ${{ matrix.package.sha }}
+
+      - name: Determine package name
+        id: pkg-name
+        run: |
+          # name of the package
+          TESTPILOT_PACKAGE_NAME=$(cat source/${{ matrix.package.path }}/package.json | jq -r .name )
+
+          # some packages have a / in their names (looking at you, gitlab-js!)
+          if [[ "$TESTPILOT_PACKAGE_NAME" == *"/"* ]]; then
+            TESTPILOT_PACKAGE_NAME=${TESTPILOT_PACKAGE_NAME##*/}
+          fi
+
+          # path to the package within the repo checkout
+          TESTPILOT_PACKAGE_PATH="$GITHUB_WORKSPACE/$TESTPILOT_PACKAGE_NAME/${{ matrix.package.path }}"
+          # make sure there isn't already a directory with the same name
+          if [ -d "$TESTPILOT_PACKAGE_PATH" ]; then
+            echo "ERROR: $TESTPILOT_PACKAGE_PATH already exists"
+            exit 1
+          fi
+          # rename checkout, since some packages examine its name (looking at you, bluebird!)
+          mv source $TESTPILOT_PACKAGE_NAME
+          echo "Package name: $TESTPILOT_PACKAGE_NAME, path: $TESTPILOT_PACKAGE_PATH"
+          # export environment variables
+          echo "TESTPILOT_PACKAGE_NAME=$TESTPILOT_PACKAGE_NAME" >> $GITHUB_ENV
+          echo "TESTPILOT_PACKAGE_PATH=$TESTPILOT_PACKAGE_PATH" >> $GITHUB_ENV
+          echo "pkgName=$TESTPILOT_PACKAGE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Install package, its dependencies, and test packages
+        run: |
+          cd $TESTPILOT_PACKAGE_PATH
+          npm i || npm i --legacy-peer-deps
+          # if matrix.package.dependencies is not empty, install them
+          if ! [ -z "${{ matrix.package.dependencies }}" ]; then
+            npm i ${{ matrix.package.dependencies }}
+          fi
+          npm run build || npm run prepack || echo 'Error with npm run build and npm run prepack'
+          npm i --no-save mocha nyc
+
+      - name: Measure coverage of default test suite
+        run: |
+          cd $TESTPILOT_PACKAGE_PATH
+          ./node_modules/.bin/nyc npm test
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
