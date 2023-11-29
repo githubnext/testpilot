@@ -3,6 +3,12 @@
 TestPilot is a tool for automatically generating unit tests for npm packages
 written in JavaScript/TypeScript using a large language model (LLM).
 
+Note that TestPilot represents an early exploration in the use of LLMs for
+test generation, and has been made available in open source as a basis for
+research and exploration. For day-to-day use the test generation features
+in [Copilot Chat](https://docs.github.com/en/copilot/github-copilot-chat/about-github-copilot-chat)
+are likely to yield better results.
+
 ## Background
 
 TestPilot generates tests for a given function `f` by prompting the LLM with a
