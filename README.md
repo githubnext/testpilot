@@ -24,7 +24,7 @@ any additional training or reinforcement learning, and no examples of functions
 and their associated tests are needed.
 
 A research paper describing TestPilot in detail is available on
-[arXiv](https://arxiv.org/abs/2302.06527).
+[arXiv](https://arxiv.org/abs/2302.06527) and [IEEExplore](https://ieeexplore.ieee.org/document/10329992).
 
 ## Requirements
 
