@@ -13,7 +13,7 @@ function extend(accessPath: string, component: string) {
   } else if (component.match(/^\d+$/)) {
     return accessPath + "[" + component + "]";
   } else {
-    return accessPath + "['" + component.replace(/['\\]/, "\\$&") + "']";
+    return accessPath + "['" + component.replace(/['\\]/g, "\\$&") + "']";
   }
 }
 
