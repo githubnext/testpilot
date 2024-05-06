@@ -16,8 +16,8 @@
     "build:watch": "tsc --watch -p src && tsc --watch -p benchmark",
     "pretest": "npm run build",
     "test": "ts-mocha --forbid-only -p test/tsconfig.json test/*.ts",
-    "autoformat": "prettier --write src test typings benchmark",
-    "autoformat:check": "prettier --check src test/*.ts typings benchmark/*.ts",
+    "autoformat": "prettier --write src test typings benchmark examples",
+    "autoformat:check": "prettier --check src test/*.ts typings benchmark/*.ts examples/*.ts",
     "prepack": "npm run build"
   },
   "devDependencies": {
