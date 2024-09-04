@@ -223,7 +223,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download output zips
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4.1.7
 
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
@@ -262,7 +262,7 @@ jobs:
           npm run build
 
       - name: Download artifacts for this run
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           name: results-all
           path: results
