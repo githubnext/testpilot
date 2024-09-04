@@ -39,7 +39,7 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.9",
-    "axios": "^1.6.0",
+    "axios": "^1.7.4",
     "common-js-file-extensions": "^1.0.4",
     "console-stamp": "^3.1.0",
     "dedent": "^0.7.0",
