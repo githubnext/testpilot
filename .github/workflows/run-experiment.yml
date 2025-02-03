@@ -269,7 +269,7 @@ jobs:
 
       - name: Download artifacts for comparison run
         if: ${{ github.event.inputs.compareTo != '' }}
-        uses: dawidd6/action-download-artifact@v2
+        uses: dawidd6/action-download-artifact@v6
         with:
           run_number: ${{ github.event.inputs.compareTo }}
           name: results-all
